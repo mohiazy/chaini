@@ -61,14 +61,14 @@
 
   const HEAD_TYPES = {
     ball: {
-      name: "Ball",
+      name: "Wrecking Ball",
       texture: "head-ball",
       shape: "circle",
-      radius: 18,
-      massMultiplier: 1,
-      damageMultiplier: 1,
-      jointMultiplier: 1,
-      trailColor: 0xffdf7e,
+      radius: 20,
+      massMultiplier: 1.6,
+      damageMultiplier: 1.1,
+      jointMultiplier: 1.2,
+      trailColor: 0xffd479,
     },
     spike: {
       name: "Spike",
@@ -76,9 +76,9 @@
       shape: "polygon",
       radius: 18,
       sides: 3,
-      massMultiplier: 0.85,
-      damageMultiplier: 1.35,
-      jointMultiplier: 1.15,
+      massMultiplier: 0.8,
+      damageMultiplier: 1.5,
+      jointMultiplier: 1.1,
       trailColor: 0x8fffb1,
     },
     hammer: {
@@ -87,14 +87,13 @@
       shape: "rectangle",
       width: 34,
       height: 22,
-      massMultiplier: 1.4,
-      damageMultiplier: 1.15,
-      jointMultiplier: 1.4,
+      massMultiplier: 1.2,
+      damageMultiplier: 1.2,
+      jointMultiplier: 1.6,
       trailColor: 0xff7b7b,
     },
   };
 
-  const HEAD_ORDER = ["ball", "spike", "hammer"];
   const CHAIN_LIMITS = { minLength: 140, maxLength: 380 };
 
   const LEVELS = [
@@ -139,6 +138,7 @@
         addShield(scene, 620, 300);
         createTarget(scene, 720, 320, 36, 36, "glass");
         createTarget(scene, 770, 360, 32, 32, "glass");
+        addStack(scene, 560, 430, 2, 2, 30, 30, "wood", [], false);
       },
     },
     {
@@ -499,6 +499,7 @@
       this.pointerIndicator = null;
       this.shardEmitter = null;
       this.audioContext = null;
+      this.noiseBuffer = null;
     }
 
     create() {
@@ -554,10 +555,10 @@
       if (!this.textures.exists("head-ball")) {
         const ball = this.add.graphics();
         ball.fillStyle(0xffdf7e, 1);
-        ball.fillCircle(18, 18, 18);
+        ball.fillCircle(20, 20, 20);
         ball.fillStyle(0xffffff, 0.3);
-        ball.fillCircle(12, 12, 8);
-        ball.generateTexture("head-ball", 36, 36);
+        ball.fillCircle(14, 14, 9);
+        ball.generateTexture("head-ball", 40, 40);
         ball.destroy();
       }
 
@@ -602,6 +603,7 @@
       this.background = this.add.tileSprite(0, 0, 960, 540, "bg-grid");
       this.background.setOrigin(0, 0);
       this.background.setDepth(-5);
+      this.background.setScrollFactor(0);
     }
 
     setupParticles() {
@@ -637,6 +639,9 @@
       this.input.addPointer(1);
       this.input.on("pointerdown", (pointer) => {
         if (this.levelOver) {
+          return;
+        }
+        if (pointer.id !== 0) {
           return;
         }
         if (!this.audioContext) {
@@ -744,13 +749,14 @@
         return;
       }
       const clamped = Phaser.Math.Clamp(nextLength, CHAIN_LIMITS.minLength, CHAIN_LIMITS.maxLength);
-      if (Math.abs(clamped - this.tuning.chainLength) < 0.5) {
+      const snapped = Math.round(clamped / 10) * 10;
+      if (Math.abs(snapped - this.tuning.chainLength) < 0.5) {
         return;
       }
       if (typeof this.tuning.setValue === "function") {
-        this.tuning.setValue("chainLength", clamped);
+        this.tuning.setValue("chainLength", snapped);
       } else {
-        this.tuning.chainLength = clamped;
+        this.tuning.chainLength = snapped;
         this.applyTuning();
       }
     }
@@ -779,6 +785,11 @@
       this.collateralBreaks = 0;
       this.elapsedTimeMs = 0;
       this.bestImpact = 0;
+      this.lastImpact = 0;
+      this.lastImpactTimer = 0;
+      this.timeScale = 1;
+      this.timeScaleTarget = 1;
+      this.fixedStep.accumulator = 0;
 
       LEVELS[clampedIndex].build(this);
 
@@ -906,7 +917,11 @@
       const crackStage = computeCrackStage(entry.stress, stressLimit, material.crackStages);
       if (crackStage > entry.crackStage) {
         entry.crackStage = crackStage;
-        entry.object.setFillStyle(material.crackColor);
+        if (entry.object.setFillStyle) {
+          entry.object.setFillStyle(material.crackColor);
+        } else if (entry.object.setTint) {
+          entry.object.setTint(material.crackColor);
+        }
       }
     }
 
@@ -1005,9 +1020,19 @@
         : reason || "The chain learned something. Try again.";
 
       const elapsedSeconds = this.elapsedTimeMs / 1000;
-      time.textContent = `Time: ${formatSeconds(elapsedSeconds)}s`;
-      swings.textContent = `Swings: ${this.swingCount}`;
-      collateral.textContent = `Collateral: ${this.collateralBreaks}`;
+      const timeLimit = this.objective.timeLimitMs ? this.objective.timeLimitMs / 1000 : null;
+      time.textContent = timeLimit
+        ? `Time: ${formatSeconds(elapsedSeconds)}s / ${formatSeconds(timeLimit)}s`
+        : `Time: ${formatSeconds(elapsedSeconds)}s`;
+      const maxSwings = this.objective.maxSwings;
+      swings.textContent = maxSwings
+        ? `Swings: ${this.swingCount}/${maxSwings}`
+        : `Swings: ${this.swingCount}`;
+      const collateralLimit = this.objective.collateralLimit;
+      collateral.textContent =
+        collateralLimit !== null && collateralLimit !== undefined
+          ? `Collateral: ${this.collateralBreaks}/${collateralLimit}`
+          : `Collateral: ${this.collateralBreaks}`;
       targets.textContent = `Targets: ${this.targetsTotal - this.targetsRemaining}/${this.targetsTotal}`;
       impulse.textContent = `Best impact: ${this.bestImpact.toFixed(2)}`;
     }
@@ -1078,22 +1103,43 @@
       if (!this.audioContext) {
         return;
       }
+      if (!this.noiseBuffer) {
+        this.noiseBuffer = createNoiseBuffer(this.audioContext);
+      }
       const now = this.audioContext.currentTime;
       const osc = this.audioContext.createOscillator();
       const gain = this.audioContext.createGain();
-      const base = 120;
+      const headSpec = this.chainController.getHeadSpec();
+      const base = headSpec === HEAD_TYPES.hammer ? 90 : 120;
       const freq = base + impulse * 24;
+      const volume = Math.min(0.18, 0.04 + impulse * 0.012);
 
       osc.type = "triangle";
       osc.frequency.setValueAtTime(freq, now);
       gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(0.12, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(volume, now + 0.01);
       gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
 
       osc.connect(gain);
       gain.connect(this.audioContext.destination);
       osc.start(now);
       osc.stop(now + 0.14);
+
+      const noiseSource = this.audioContext.createBufferSource();
+      noiseSource.buffer = this.noiseBuffer;
+      const noiseFilter = this.audioContext.createBiquadFilter();
+      noiseFilter.type = "lowpass";
+      noiseFilter.frequency.setValueAtTime(800 + impulse * 40, now);
+      const noiseGain = this.audioContext.createGain();
+      noiseGain.gain.setValueAtTime(0.0001, now);
+      noiseGain.gain.exponentialRampToValueAtTime(volume * 0.7, now + 0.008);
+      noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+
+      noiseSource.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseGain.connect(this.audioContext.destination);
+      noiseSource.start(now);
+      noiseSource.stop(now + 0.1);
     }
 
     update(time, delta) {
@@ -1169,6 +1215,10 @@
     }
 
     updatePinch() {
+      if (this.levelOver) {
+        this.pinch.active = false;
+        return;
+      }
       const activePointers = this.input.pointers.filter((pointer) => pointer.isDown);
       if (activePointers.length < 2) {
         this.pinch.active = false;
@@ -1428,6 +1478,15 @@
     return value.toFixed(1);
   }
 
+  function createNoiseBuffer(audioContext) {
+    const buffer = audioContext.createBuffer(1, audioContext.sampleRate, audioContext.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i += 1) {
+      data[i] = (Math.random() * 2 - 1) * 0.6;
+    }
+    return buffer;
+  }
+
   function addGround(scene) {
     const ground = scene.add.rectangle(480, 530, 960, 30, 0x1e2533);
     scene.matter.add.gameObject(ground, { isStatic: true });
@@ -1497,6 +1556,91 @@
     createSolidRect(scene, x, y - 60, 160, 20, 0x2f394d, true);
   }
 
+  function addBridge(scene, x, y) {
+    const leftSupport = createSolidRect(scene, x - 140, y + 20, 24, 90, 0x2f394d, true);
+    const rightSupport = createSolidRect(scene, x + 140, y + 20, 24, 90, 0x2f394d, true);
+    const plankCount = 3;
+    const plankWidth = 80;
+    const plankHeight = 16;
+    const planks = [];
+    let previous = null;
+    for (let i = 0; i < plankCount; i += 1) {
+      const plankX = x - plankWidth + i * plankWidth;
+      const plank = createBreakableRect(scene, plankX, y, plankWidth, plankHeight, "wood", false);
+      planks.push(plank);
+      if (previous) {
+        const link = scene.matter.add.constraint(previous.body, plank.body, plankWidth, 0.8);
+        scene.levelConstraints.push(link);
+        scene.registerJoint(link, 6.5, [previous.body, plank.body]);
+      }
+      previous = plank;
+    }
+    const firstPlank = planks[0];
+    const lastPlank = planks[planks.length - 1];
+    if (firstPlank) {
+      const leftLink = scene.matter.add.constraint(leftSupport.body, firstPlank.body, 20, 0.9);
+      scene.levelConstraints.push(leftLink);
+      scene.registerJoint(leftLink, 6.0, [leftSupport.body, firstPlank.body]);
+    }
+    if (lastPlank) {
+      const rightLink = scene.matter.add.constraint(rightSupport.body, lastPlank.body, 20, 0.9);
+      scene.levelConstraints.push(rightLink);
+      scene.registerJoint(rightLink, 6.0, [rightSupport.body, lastPlank.body]);
+    }
+  }
+
+  function addSeesaw(scene, x, y) {
+    const pivot = createSolidRect(scene, x, y, 24, 24, 0x2f394d, true);
+    const beam = createBreakableRect(scene, x, y - 20, 200, 18, "wood", false);
+    const joint = scene.matter.add.constraint(pivot.body, beam.body, 0, 0.9);
+    scene.levelConstraints.push(joint);
+    scene.registerJoint(joint, 6.0, [pivot.body, beam.body]);
+  }
+
+  function addHangingRow(scene, startX, y, count, spacing, material, targetIndices) {
+    const indices = new Set(targetIndices || []);
+    for (let i = 0; i < count; i += 1) {
+      const anchorX = startX + i * spacing;
+      const anchor = createSolidRect(scene, anchorX, y, 16, 16, 0x2a2f3a, true);
+      const weight = createBreakableRect(
+        scene,
+        anchorX,
+        y + 90,
+        32,
+        32,
+        material,
+        indices.has(i)
+      );
+      const constraint = scene.matter.add.constraint(anchor.body, weight.body, 90, 0.85);
+      scene.levelConstraints.push(constraint);
+      scene.registerJoint(constraint, 6.5, [anchor.body, weight.body]);
+    }
+  }
+
+  function addCage(scene, x, y, width, height, material) {
+    const halfW = width / 2;
+    const halfH = height / 2;
+    const top = createBreakableRect(scene, x, y - halfH, width, 16, material, false);
+    const bottom = createBreakableRect(scene, x, y + halfH, width, 16, material, false);
+    const left = createBreakableRect(scene, x - halfW, y, 16, height, material, false);
+    const right = createBreakableRect(scene, x + halfW, y, 16, height, material, false);
+    const topLeft = scene.matter.add.constraint(top.body, left.body, 0, 0.9);
+    const topRight = scene.matter.add.constraint(top.body, right.body, 0, 0.9);
+    const bottomLeft = scene.matter.add.constraint(bottom.body, left.body, 0, 0.9);
+    const bottomRight = scene.matter.add.constraint(bottom.body, right.body, 0, 0.9);
+    const joints = [
+      { joint: topLeft, bodies: [top.body, left.body] },
+      { joint: topRight, bodies: [top.body, right.body] },
+      { joint: bottomLeft, bodies: [bottom.body, left.body] },
+      { joint: bottomRight, bodies: [bottom.body, right.body] },
+    ];
+    joints.forEach((entry) => {
+      scene.levelConstraints.push(entry.joint);
+      scene.registerJoint(entry.joint, 6.0, entry.bodies);
+    });
+    createTarget(scene, x, y, 38, 38, "glass");
+  }
+
   function createTarget(scene, x, y, width, height, material) {
     return createBreakableRect(scene, x, y, width, height, material, true);
   }
@@ -1509,7 +1653,7 @@
     rect.setFriction(0.2);
     rect.setBounce(material.restitution || 0.05);
     rect.setDensity(material.density);
-    if (isTarget) {
+    if (isTarget && rect.setStrokeStyle) {
       rect.setStrokeStyle(2, 0xff4d4d);
     }
     scene.registerBreakable(rect, materialName, isTarget);

@@ -43,6 +43,7 @@ body {
 .hud-stats {
   font-size: 12px;
   color: #c2cbee;
+  flex-wrap: wrap;
 }
 
 #head-status {
@@ -263,6 +264,11 @@ body {
 
 #results-actions button:last-child {
   background: #8fffb1;
+}
+
+#results-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 @media (max-width: 720px) {
