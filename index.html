@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chaini</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bungee&family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="src/styles.css" />
+  </head>
+  <body>
+    <div id="game-container"></div>
+
+    <div id="hud">
+      <div id="hud-row">
+        <div id="objective">Objective: Destroy all targets</div>
+        <div id="chain-state" class="inactive">Chain idle</div>
+        <div id="impact">Impact: --</div>
+      </div>
+      <div id="hud-row">
+        <div id="tension">
+          <span>Tension</span>
+          <div class="bar">
+            <div id="tension-fill"></div>
+          </div>
+        </div>
+        <div id="level-status">Level 1</div>
+        <button id="restart-btn" type="button">Restart (R)</button>
+      </div>
+      <div id="hud-row" class="hud-stats">
+        <div id="timer">Time: 0.0s</div>
+        <div id="swings">Swings: 0</div>
+        <div id="collateral">Collateral: 0</div>
+        <div id="head-status">Head: Ball</div>
+      </div>
+      <div id="level-clear" class="hidden">
+        Cleared! Press N for next arena.
+      </div>
+    </div>
+
+    <div id="tuning">
+      <div class="title">Tuning</div>
+      <label>
+        Handle stiffness
+        <input id="handle-stiffness" type="range" min="0.02" max="0.25" step="0.01" value="0.12" />
+        <span id="handle-stiffness-value">0.12</span>
+      </label>
+      <label>
+        Handle damping
+        <input id="handle-damping" type="range" min="0.01" max="0.2" step="0.01" value="0.08" />
+        <span id="handle-damping-value">0.08</span>
+      </label>
+      <label>
+        Chain length
+        <input id="chain-length" type="range" min="140" max="380" step="10" value="240" />
+        <span id="chain-length-value">240</span>
+      </label>
+      <label>
+        Head mass
+        <input id="head-mass" type="range" min="2" max="10" step="1" value="6" />
+        <span id="head-mass-value">6</span>
+      </label>
+      <label>
+        Break threshold
+        <input id="break-scale" type="range" min="0.6" max="1.6" step="0.1" value="1.0" />
+        <span id="break-scale-value">1.0</span>
+      </label>
+      <div class="head-select">
+        <span>Head</span>
+        <div class="head-buttons">
+          <button id="head-ball" type="button" class="active">Ball (1)</button>
+          <button id="head-spike" type="button">Spike (2)</button>
+          <button id="head-hammer" type="button">Hammer (3)</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="results" class="hidden">
+      <div id="results-panel">
+        <div id="results-title">Cleared!</div>
+        <div id="results-subtitle">Momentum speaks louder than buttons.</div>
+        <div id="results-stats">
+          <div id="results-time">Time: 0.0s</div>
+          <div id="results-swings">Swings: 0</div>
+          <div id="results-collateral">Collateral: 0</div>
+          <div id="results-targets">Targets: 0/0</div>
+          <div id="results-impulse">Best impact: 0.0</div>
+        </div>
+        <div id="results-actions">
+          <button id="results-restart" type="button">Restart (R)</button>
+          <button id="results-next" type="button">Next (N)</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.js"></script>
+    <script src="src/game.js"></script>
+  </body>
+</html>
