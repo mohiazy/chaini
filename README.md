@@ -1,34 +1,44 @@
-# Chaini
+# Chain Impact Lab
 
-Click and drag to manifest a chain, build momentum, and shatter weak structures in compact physics arenas.
+A lightweight top-down 2D/2.5D chain physics sandbox.  
+Move the cursor to drag the chain handle, build momentum, and slam targets with the weighted tip.
 
 ## Run
 
-1. Start a local server from the repo root:
+1. Open `index.html` directly in a browser, or serve the folder with a static server.
+2. If you want a local server quickly:
 
 ```bash
-python -m http.server 8000
+npx serve .
 ```
-
-2. Open `http://localhost:8000` in a browser.
-
-You can also open `index.html` directly, but some browsers throttle audio and storage when run from disk.
 
 ## Controls
 
-- Click or touch: spawn chain.
-- Move pointer: swing the head and build momentum.
-- Release: chain retracts.
-- Mouse wheel / pinch: adjust chain length on the fly.
-- 1 / 2 / 3 or head buttons: switch wrecking ball, spike, hammer.
-- R: restart arena.
-- N: next arena.
-
-## Tuning
-
-Use the tuning panel to adjust handle stiffness/damping, chain length, head mass, and break threshold.
+- Move cursor: steer the chain
+- `Q / A`: increase or decrease chain link count
+- `W / S`: increase or decrease tip mass
+- `E / D`: increase or decrease chain stiffness
+- `F / G`: increase or decrease handle grip (responsiveness)
+- `T`: cycle theme
+- `1 / 2`: direct theme select (`Impact Forge` / `Neon Pinball`)
+- `M`: mute or unmute sound
+- `Space`: add more targets
+- `R`: reset the arena
+- First click/key press unlocks audio in browsers (autoplay policy).
 
 ## Notes
 
-This prototype uses Phaser 3 + Matter.js with impulse-based breaking, stress buildup, joint failure, and quick restarts.
-Objectives now include swing limits, time limits, and collateral caps with a results screen.
+- Uses Verlet integration + iterative constraints for chain behavior.
+- Includes collision response between chain links, targets, and boundaries.
+- Targets are breakable with tier-based durability and crack as they take damage.
+- Soft targets: lower durability, breaks quickly.
+- Armored targets: high durability, reduced damage intake.
+- Metallic targets: very heavy and highly durable, with strong recoil on impact.
+- Explosive targets: detonate on break, pushing and damaging nearby targets.
+- Shattered targets emit debris, impact rings, and stronger camera shake on heavy strikes.
+- Cursor-to-chain response defaults to a more realistic feel, with a small rubber-band snap assist on sharp direction changes.
+- Chain impacts now push subtle recoil back through the chain and handle.
+- A minimal hit-stop effect is applied on stronger hits and shatters for extra feel without obvious slowdown.
+- Theme modes include matching visuals and synthesized audio:
+- `Impact Forge`: heavy metallic/destruction vibes.
+- `Neon Pinball`: brighter musical/pinball-style blips.
