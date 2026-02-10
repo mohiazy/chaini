@@ -15,6 +15,7 @@ npx serve .
 ## Controls
 
 - Move cursor: steer the chain
+- Hold click + drag: engage auto-spin assist for much harder hits
 - `Q / A`: increase or decrease chain link count
 - `W / S`: increase or decrease tip mass
 - `E / D`: increase or decrease chain stiffness
@@ -37,8 +38,10 @@ npx serve .
 - Explosive targets: detonate on break, pushing and damaging nearby targets.
 - Shattered targets emit debris, impact rings, and stronger camera shake on heavy strikes.
 - Cursor-to-chain response defaults to a more realistic feel, with a small rubber-band snap assist on sharp direction changes.
+- Default chain is shorter for tighter control.
 - Chain impacts now push subtle recoil back through the chain and handle.
 - A minimal hit-stop effect is applied on stronger hits and shatters for extra feel without obvious slowdown.
 - Theme modes include matching visuals and synthesized audio:
 - `Impact Forge`: heavy metallic/destruction vibes.
 - `Neon Pinball`: brighter musical/pinball-style blips.
+- HUD and controls were visually refreshed with stronger theme-driven styling.

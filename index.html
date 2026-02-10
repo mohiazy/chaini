@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -13,12 +13,13 @@
     <p class="kicker">Physics Prototype</p>
     <h1 class="brand">Chain Impact Lab</h1>
     <p class="instructions">
-      Move the cursor in circles to build momentum, then shatter targets with the chain head.
+      Steer with the cursor. Hold click to engage auto-spin and whip the chain for heavier impacts.
     </p>
 
     <p class="modeline">
       <span>Theme <strong id="themeName">Impact Forge</strong></span>
       <span>Audio <strong id="audioState">Off</strong></span>
+      <span>Assist <strong id="assistState">Idle</strong></span>
     </p>
 
     <div class="stats">
@@ -38,6 +39,10 @@
         <span>Shattered</span>
         <strong id="shatteredCount">0</strong>
       </article>
+      <article class="stat spin">
+        <span>Spin Boost</span>
+        <strong id="spinValue">0%</strong>
+      </article>
     </div>
 
     <p class="legend">
@@ -48,7 +53,7 @@
     </p>
 
     <p class="tuning" id="tuningReadout">
-      <span><kbd>Q/A</kbd> Links <strong id="linkCountValue">18</strong></span>
+      <span><kbd>Q/A</kbd> Links <strong id="linkCountValue">14</strong></span>
       <span><kbd>W/S</kbd> Mass <strong id="tipMassValue">6.8</strong></span>
       <span><kbd>E/D</kbd> Stiff <strong id="stiffnessValue">0.98</strong></span>
       <span><kbd>F/G</kbd> Grip <strong id="gripValue">1.04</strong></span>
@@ -64,6 +69,8 @@
       <kbd>1/2</kbd> Mode
       <span class="divider">&bull;</span>
       <kbd>M</kbd> Mute
+      <span class="divider">&bull;</span>
+      <kbd>Hold Click</kbd> Auto-Spin
     </p>
   </section>
 

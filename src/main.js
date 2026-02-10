@@ -8,12 +8,14 @@
   const impactEl = document.getElementById("impactValue");
   const targetCountEl = document.getElementById("targetCount");
   const shatteredCountEl = document.getElementById("shatteredCount");
+  const spinValueEl = document.getElementById("spinValue");
   const linkCountValueEl = document.getElementById("linkCountValue");
   const tipMassValueEl = document.getElementById("tipMassValue");
   const stiffnessValueEl = document.getElementById("stiffnessValue");
   const gripValueEl = document.getElementById("gripValue");
   const themeNameEl = document.getElementById("themeName");
   const audioStateEl = document.getElementById("audioState");
+  const assistStateEl = document.getElementById("assistState");
   const tuningReadoutEl = document.getElementById("tuningReadout");
 
   const FIXED_DT = 1 / 120;
@@ -22,7 +24,7 @@
   const BASE_LINK_RADIUS = 8.4;
 
   const tuning = {
-    linkCount: 18,
+    linkCount: 14,
     tipMass: 6.8,
     stiffness: 0.98,
     grip: 1.04
@@ -47,7 +49,15 @@
     sampleTime: performance.now() * 0.001,
     turnSnap: 0,
     turnDirX: 0,
-    turnDirY: 0
+    turnDirY: 0,
+    down: false,
+    downId: null,
+    boost: 0,
+    spinDir: 1,
+    pivotX: window.innerWidth * 0.5,
+    pivotY: window.innerHeight * 0.5,
+    orbitAngle: 0,
+    orbitRadius: 86
   };
 
   const targetTierDefs = {
@@ -830,31 +840,79 @@
       piece.x = clamp(piece.x, piece.radius, world.width - piece.radius);
       piece.y = clamp(piece.y, piece.radius, world.height - piece.radius);
     }
+
+    pointer.pivotX = clamp(pointer.pivotX, 0, world.width);
+    pointer.pivotY = clamp(pointer.pivotY, 0, world.height);
   }
 
   function updateHandle(dt) {
-    const pointerDecay = Math.pow(0.84, dt * 60);
+    const pointerDecay = Math.pow(pointer.down ? 0.89 : 0.84, dt * 60);
     pointer.vx *= pointerDecay;
     pointer.vy *= pointerDecay;
     pointer.turnSnap *= Math.pow(0.62, dt * 60);
 
+    const boostBlend = pointer.down ? 0.34 : 0.12;
+    pointer.boost += ((pointer.down ? 1 : 0) - pointer.boost) * boostBlend * dt * 60;
+    pointer.boost = clamp(pointer.boost, 0, 1);
+
     const pointerSpeed = Math.hypot(pointer.vx, pointer.vy);
-    const lead = (0.016 + pointerSpeed / 56000) * tuning.grip;
-    const targetX = clamp(pointer.x + pointer.vx * lead, 0, world.width);
-    const targetY = clamp(pointer.y + pointer.vy * lead, 0, world.height);
+    const pivotFollow = pointer.down ? 0.26 : 0.12;
+    const pivotStep = clamp(pivotFollow * dt * 60, 0, 1);
+    pointer.pivotX += (pointer.x - pointer.pivotX) * pivotStep;
+    pointer.pivotY += (pointer.y - pointer.pivotY) * pivotStep;
+
+    const targetRadius = pointer.down
+      ? clamp(78 + pointerSpeed * 0.022, 72, 150)
+      : 64;
+    const radiusBlend = pointer.down ? 0.19 : 0.11;
+    pointer.orbitRadius += (targetRadius - pointer.orbitRadius) * clamp(radiusBlend * dt * 60, 0, 1);
+
+    if (pointer.down) {
+      const spinRate = 7.6 + pointerSpeed * 0.0065;
+      pointer.orbitAngle += spinRate * pointer.spinDir * dt;
+    } else {
+      pointer.orbitAngle += 0.22 * pointer.spinDir * dt;
+    }
+
+    const orbitX = pointer.pivotX + Math.cos(pointer.orbitAngle) * pointer.orbitRadius;
+    const orbitY = pointer.pivotY + Math.sin(pointer.orbitAngle) * pointer.orbitRadius;
+    const autoSpinMix = pointer.boost * 0.93;
+    const assistX = pointer.x * (1 - autoSpinMix) + orbitX * autoSpinMix;
+    const assistY = pointer.y * (1 - autoSpinMix) + orbitY * autoSpinMix;
+
+    const lead = (0.016 + pointerSpeed / 62000) * tuning.grip * (1 + pointer.boost * 0.38);
+    const targetX = clamp(assistX + pointer.vx * lead, 0, world.width);
+    const targetY = clamp(assistY + pointer.vy * lead, 0, world.height);
 
     const dx = targetX - handle.x;
     const dy = targetY - handle.y;
     const distance = Math.hypot(dx, dy);
-    const snapBoost = 1 + pointer.turnSnap * 1.18;
+    const snapBoost = 1 + pointer.turnSnap * 1.05 + pointer.boost * 0.4;
     const spring = (90 + Math.min(170, distance * 0.33)) * tuning.grip * snapBoost;
-    const feedForward = (0.22 + pointer.turnSnap * 0.21) * tuning.grip;
-    const dampingBase = clamp(0.71 - (tuning.grip - 1) * 0.08, 0.61, 0.79);
+    const feedForward = (0.22 + pointer.turnSnap * 0.21) * tuning.grip * (1 + pointer.boost * 0.95);
+    const dampingBase = clamp(0.71 - (tuning.grip - 1) * 0.08 - pointer.boost * 0.05, 0.56, 0.79);
     const decay = Math.pow(dampingBase, dt * 60);
-    const maxSpeed = 2700 + (tuning.grip - 1) * 680 + pointer.turnSnap * 420;
+    const maxSpeed = 2800 + (tuning.grip - 1) * 680 + pointer.turnSnap * 420 + pointer.boost * 1850;
 
     handle.vx += dx * spring * dt + pointer.vx * feedForward * dt;
     handle.vy += dy * spring * dt + pointer.vy * feedForward * dt;
+
+    if (pointer.boost > 0.01) {
+      const rx = assistX - handle.x;
+      const ry = assistY - handle.y;
+      const radius = Math.hypot(rx, ry);
+      if (radius > 10) {
+        const invRadius = 1 / radius;
+        const tx = -ry * invRadius;
+        const ty = rx * invRadius;
+        const orbitPullX = rx * invRadius;
+        const orbitPullY = ry * invRadius;
+        const swirl = (85 + pointer.boost * 210 + pointerSpeed * 0.04) * dt;
+        const pull = (14 + pointer.boost * 28) * dt;
+        handle.vx += tx * pointer.spinDir * swirl + orbitPullX * pull;
+        handle.vy += ty * pointer.spinDir * swirl + orbitPullY * pull;
+      }
+    }
 
     handle.vx *= decay;
     handle.vy *= decay;
@@ -867,9 +925,9 @@
     }
 
     const catchup = clamp(
-      (0.024 + pointer.turnSnap * 0.05) * tuning.grip * dt * 60,
+      (0.024 + pointer.turnSnap * 0.05 + pointer.boost * 0.065) * tuning.grip * dt * 60,
       0,
-      0.22
+      0.28
     );
     if (pointer.turnSnap > 0.01) {
       const snapImpulse = pointer.turnSnap * 26 * dt;
@@ -1214,7 +1272,7 @@
         (a === tip && b.kind === "target") || (b === tip && a.kind === "target");
 
       if (tipHitTarget) {
-        const strength = Math.abs(normalSpeed) * 24;
+        const strength = Math.abs(normalSpeed) * 24 * (1 + pointer.boost * 0.95);
         const impactX = (a.x + b.x) * 0.5;
         const impactY = (a.y + b.y) * 0.5;
         const target = a.kind === "target" ? a : b;
@@ -1445,6 +1503,49 @@
       ctx.lineTo(w, y);
     }
     ctx.stroke();
+  }
+
+  function drawAssistGuide(time) {
+    if (pointer.boost < 0.05) {
+      return;
+    }
+    const theme = activeTheme;
+    const orbitX = pointer.pivotX + Math.cos(pointer.orbitAngle) * pointer.orbitRadius;
+    const orbitY = pointer.pivotY + Math.sin(pointer.orbitAngle) * pointer.orbitRadius;
+    const alpha = 0.12 + pointer.boost * 0.3;
+
+    ctx.save();
+    ctx.strokeStyle = `rgba(${theme.pointerGlow}, ${alpha})`;
+    ctx.lineWidth = 1.2 + pointer.boost * 2.1;
+    ctx.setLineDash([8, 10]);
+    ctx.lineDashOffset = -time * 90 * pointer.spinDir;
+    ctx.beginPath();
+    ctx.arc(pointer.pivotX, pointer.pivotY, pointer.orbitRadius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+    ctx.strokeStyle = `rgba(${theme.pointerHalo}, ${0.08 + pointer.boost * 0.2})`;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(pointer.pivotX, pointer.pivotY);
+    ctx.lineTo(orbitX, orbitY);
+    ctx.stroke();
+
+    const core = ctx.createRadialGradient(
+      orbitX,
+      orbitY,
+      1,
+      orbitX,
+      orbitY,
+      16 + pointer.boost * 10
+    );
+    core.addColorStop(0, `rgba(${theme.pointerGlow}, 0.92)`);
+    core.addColorStop(1, `rgba(${theme.pointerGlow}, 0)`);
+    ctx.fillStyle = core;
+    ctx.beginPath();
+    ctx.arc(orbitX, orbitY, 16 + pointer.boost * 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   function drawTarget(target) {
@@ -1738,6 +1839,7 @@
     ctx.save();
     ctx.translate(shakeX, shakeY);
     drawBackground(time);
+    drawAssistGuide(time);
 
     for (let i = 0; i < targets.length; i += 1) {
       drawTarget(targets[i]);
@@ -1754,6 +1856,14 @@
     impactEl.textContent = (lastImpactStrength * 0.5).toFixed(0);
     targetCountEl.textContent = String(targets.length);
     shatteredCountEl.textContent = String(shatteredCount);
+    if (spinValueEl) {
+      spinValueEl.textContent = `${Math.round(pointer.boost * 100)}%`;
+    }
+    if (assistStateEl) {
+      const active = pointer.boost > 0.08;
+      assistStateEl.textContent = active ? "Active" : "Idle";
+      assistStateEl.dataset.active = active ? "1" : "0";
+    }
   }
 
   function frame(nowMs) {
@@ -1798,6 +1908,10 @@
     const prevSpeed = Math.hypot(prevVx, prevVy);
     if (prevSpeed > 260 && speed > 300) {
       const dot = (prevVx * vx + prevVy * vy) / (prevSpeed * speed);
+      const cross = prevVx * vy - prevVy * vx;
+      if (Math.abs(cross) > 2600) {
+        pointer.spinDir = cross >= 0 ? 1 : -1;
+      }
       if (dot < 0.42) {
         const severity = clamp((0.42 - dot) * 0.75, 0, 0.5);
         const toTargetX = nextX - handle.x;
@@ -1874,13 +1988,61 @@
   window.addEventListener(
     "pointermove",
     (event) => {
+      if (pointer.down && pointer.downId !== null && event.pointerId !== pointer.downId) {
+        return;
+      }
       updatePointerFromEvent(event);
+      if (pointer.down && event.buttons === 0) {
+        pointer.down = false;
+        pointer.downId = null;
+      }
     },
     { passive: true }
   );
   window.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) {
+      return;
+    }
     updatePointerFromEvent(event);
+    pointer.down = true;
+    pointer.downId = event.pointerId;
+    pointer.pivotX = pointer.x;
+    pointer.pivotY = pointer.y;
+    const hx = handle.x - pointer.pivotX;
+    const hy = handle.y - pointer.pivotY;
+    pointer.orbitAngle = Math.atan2(hy, hx);
+    pointer.orbitRadius = clamp(Math.hypot(hx, hy), 72, 150);
+    pointer.boost = Math.max(pointer.boost, 0.35);
+    try {
+      canvas.setPointerCapture(event.pointerId);
+    } catch (_) {
+      // Ignore pointer capture errors for unsupported devices.
+    }
     ensureAudio();
+  });
+  window.addEventListener("pointerup", (event) => {
+    if (pointer.downId !== null && event.pointerId !== pointer.downId) {
+      return;
+    }
+    try {
+      canvas.releasePointerCapture(event.pointerId);
+    } catch (_) {
+      // Ignore pointer capture errors for unsupported devices.
+    }
+    pointer.down = false;
+    pointer.downId = null;
+  });
+  window.addEventListener("pointercancel", (event) => {
+    if (pointer.downId !== null && event.pointerId !== pointer.downId) {
+      return;
+    }
+    try {
+      canvas.releasePointerCapture(event.pointerId);
+    } catch (_) {
+      // Ignore pointer capture errors for unsupported devices.
+    }
+    pointer.down = false;
+    pointer.downId = null;
   });
 
   window.addEventListener("keydown", (event) => {
