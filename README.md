@@ -15,7 +15,7 @@ npx serve .
 ## Controls
 
 - Move cursor: steer the chain
-- Hold click + drag: engage auto-spin assist for much harder hits
+- Hold click + drag: engage locked auto-spin assist for much harder hits
 - `Q / A`: increase or decrease chain link count
 - `W / S`: increase or decrease tip mass
 - `E / D`: increase or decrease chain stiffness
@@ -25,7 +25,7 @@ npx serve .
 - `M`: mute or unmute sound
 - `Space`: add more targets
 - `R`: reset the arena
-- First click/key press unlocks audio in browsers (autoplay policy).
+- Sound effects are enabled on load (browser autoplay policies may still require initial interaction on some setups).
 
 ## Notes
 
@@ -41,6 +41,8 @@ npx serve .
 - Default chain is shorter for tighter control.
 - Chain impacts now push subtle recoil back through the chain and handle.
 - A minimal hit-stop effect is applied on stronger hits and shatters for extra feel without obvious slowdown.
+- HUD auto-docks toward the left edge and slides back into view on hover/focus.
+- Corner deflector bumpers keep targets from getting trapped in corners.
 - Theme modes include matching visuals and synthesized audio:
 - `Impact Forge`: heavy metallic/destruction vibes.
 - `Neon Pinball`: brighter musical/pinball-style blips.

@@ -17,6 +17,7 @@
   const audioStateEl = document.getElementById("audioState");
   const assistStateEl = document.getElementById("assistState");
   const tuningReadoutEl = document.getElementById("tuningReadout");
+  const hudEl = document.querySelector(".hud");
 
   const FIXED_DT = 1 / 120;
   const SOLVER_ITERATIONS = 10;
@@ -54,6 +55,8 @@
     downId: null,
     boost: 0,
     spinDir: 1,
+    spinRate: 0,
+    spinLocked: false,
     pivotX: window.innerWidth * 0.5,
     pivotY: window.innerHeight * 0.5,
     orbitAngle: 0,
@@ -189,6 +192,7 @@
   const targets = [];
   const impacts = [];
   const debris = [];
+  const cornerDeflectors = [];
 
   let accumulator = 0;
   let previousTime = performance.now() * 0.001;
@@ -206,6 +210,7 @@
   let nextImpactSoundTime = 0;
   let nextShatterSoundTime = 0;
   let nextExplosionSoundTime = 0;
+  let hudDockTimer = null;
 
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
@@ -213,6 +218,53 @@
 
   function random(min, max) {
     return min + Math.random() * (max - min);
+  }
+
+  function setHudDocked(docked) {
+    if (!hudEl) {
+      return;
+    }
+    hudEl.classList.toggle("docked", Boolean(docked));
+  }
+
+  function scheduleHudDock(delayMs) {
+    if (!hudEl) {
+      return;
+    }
+    if (hudDockTimer !== null) {
+      window.clearTimeout(hudDockTimer);
+      hudDockTimer = null;
+    }
+    setHudDocked(false);
+    hudDockTimer = window.setTimeout(() => {
+      setHudDocked(true);
+      hudDockTimer = null;
+    }, delayMs);
+  }
+
+  function rebuildCornerDeflectors() {
+    const radius = clamp(Math.min(world.width, world.height) * 0.095, 70, 112);
+    cornerDeflectors.length = 0;
+    cornerDeflectors.push(
+      { x: 0, y: 0, radius },
+      { x: world.width, y: 0, radius },
+      { x: 0, y: world.height, radius },
+      { x: world.width, y: world.height, radius }
+    );
+  }
+
+  function isInsideCornerDeflector(x, y, radius, padding) {
+    const extra = padding || 0;
+    for (let i = 0; i < cornerDeflectors.length; i += 1) {
+      const deflector = cornerDeflectors[i];
+      const dx = x - deflector.x;
+      const dy = y - deflector.y;
+      const minDist = deflector.radius + radius + extra;
+      if (dx * dx + dy * dy < minDist * minDist) {
+        return true;
+      }
+    }
+    return false;
   }
 
   function updateAudioHud() {
@@ -229,21 +281,23 @@
   function applyTheme(themeKey) {
     const nextTheme = themePresets[themeKey];
     if (!nextTheme) {
-      return;
+      return false;
     }
+    const changed = activeTheme.key !== nextTheme.key;
     activeTheme = nextTheme;
     document.body.setAttribute("data-theme", nextTheme.key);
     if (themeNameEl) {
       themeNameEl.textContent = nextTheme.name;
     }
     triggerTuningFlash();
+    return changed;
   }
 
   function cycleTheme() {
     const keys = Object.keys(themePresets);
     const currentIndex = Math.max(0, keys.indexOf(activeTheme.key));
     const nextKey = keys[(currentIndex + 1) % keys.length];
-    applyTheme(nextKey);
+    return applyTheme(nextKey);
   }
 
   function createNoiseBuffer(context) {
@@ -769,6 +823,10 @@
       const x = random(radius + 28, world.width - radius - 28);
       const y = random(radius + 28, world.height - radius - 28);
 
+      if (isInsideCornerDeflector(x, y, radius, 16)) {
+        continue;
+      }
+
       if (Math.hypot(x - handle.x, y - handle.y) < 170) {
         continue;
       }
@@ -804,6 +862,7 @@
     impacts.length = 0;
     shatteredCount = 0;
     lastImpactStrength = 0;
+    rebuildCornerDeflectors();
     spawnTargets(12, { ensureExplosive: true, ensureMetallic: true });
   }
 
@@ -811,6 +870,7 @@
     world.width = window.innerWidth;
     world.height = window.innerHeight;
     world.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    rebuildCornerDeflectors();
 
     canvas.width = Math.floor(world.width * world.dpr);
     canvas.height = Math.floor(world.height * world.dpr);
@@ -851,28 +911,30 @@
     pointer.vy *= pointerDecay;
     pointer.turnSnap *= Math.pow(0.62, dt * 60);
 
-    const boostBlend = pointer.down ? 0.34 : 0.12;
+    const boostBlend = pointer.down ? 0.28 : 0.12;
     pointer.boost += ((pointer.down ? 1 : 0) - pointer.boost) * boostBlend * dt * 60;
     pointer.boost = clamp(pointer.boost, 0, 1);
 
     const pointerSpeed = Math.hypot(pointer.vx, pointer.vy);
-    const pivotFollow = pointer.down ? 0.26 : 0.12;
+    const pivotFollow = pointer.down ? 0.16 : 0.11;
     const pivotStep = clamp(pivotFollow * dt * 60, 0, 1);
     pointer.pivotX += (pointer.x - pointer.pivotX) * pivotStep;
     pointer.pivotY += (pointer.y - pointer.pivotY) * pivotStep;
 
     const targetRadius = pointer.down
-      ? clamp(78 + pointerSpeed * 0.022, 72, 150)
+      ? clamp(90 + pointerSpeed * 0.008, 86, 126)
       : 64;
-    const radiusBlend = pointer.down ? 0.19 : 0.11;
+    const radiusBlend = pointer.down ? 0.12 : 0.11;
     pointer.orbitRadius += (targetRadius - pointer.orbitRadius) * clamp(radiusBlend * dt * 60, 0, 1);
 
-    if (pointer.down) {
-      const spinRate = 7.6 + pointerSpeed * 0.0065;
-      pointer.orbitAngle += spinRate * pointer.spinDir * dt;
-    } else {
-      pointer.orbitAngle += 0.22 * pointer.spinDir * dt;
-    }
+    const targetSpinRate = pointer.down
+      ? clamp(6.6 + pointerSpeed * 0.0022 + pointer.boost * 2.4, 6.4, 13.5)
+      : 0.85;
+    const spinRateBlend = pointer.down ? 0.18 : 0.1;
+    pointer.spinRate +=
+      (targetSpinRate - pointer.spinRate) *
+      clamp(spinRateBlend * dt * 60, 0, 1);
+    pointer.orbitAngle += pointer.spinRate * pointer.spinDir * dt;
 
     const orbitX = pointer.pivotX + Math.cos(pointer.orbitAngle) * pointer.orbitRadius;
     const orbitY = pointer.pivotY + Math.sin(pointer.orbitAngle) * pointer.orbitRadius;
@@ -1020,6 +1082,53 @@
       body.y = world.height - body.radius;
       if (vy > 0) {
         vy *= -bounce;
+      }
+      bounced = true;
+    }
+
+    if (bounced) {
+      body.px = body.x - vx;
+      body.py = body.y - vy;
+    }
+  }
+
+  function solveCornerDeflectors(body, bounce) {
+    if (body.invMass === 0 || cornerDeflectors.length === 0) {
+      return;
+    }
+
+    let vx = body.x - body.px;
+    let vy = body.y - body.py;
+    let bounced = false;
+
+    for (let i = 0; i < cornerDeflectors.length; i += 1) {
+      const deflector = cornerDeflectors[i];
+      const dx = body.x - deflector.x;
+      const dy = body.y - deflector.y;
+      const minDist = deflector.radius + body.radius;
+      const distSq = dx * dx + dy * dy;
+      if (distSq >= minDist * minDist) {
+        continue;
+      }
+
+      let nx;
+      let ny;
+      if (distSq > 1e-8) {
+        const dist = Math.sqrt(distSq);
+        nx = dx / dist;
+        ny = dy / dist;
+      } else {
+        nx = deflector.x < world.width * 0.5 ? 0.7071 : -0.7071;
+        ny = deflector.y < world.height * 0.5 ? 0.7071 : -0.7071;
+      }
+
+      body.x = deflector.x + nx * minDist;
+      body.y = deflector.y + ny * minDist;
+
+      const normalSpeed = vx * nx + vy * ny;
+      if (normalSpeed < 0) {
+        vx -= (1 + bounce) * normalSpeed * nx;
+        vy -= (1 + bounce) * normalSpeed * ny;
       }
       bounced = true;
     }
@@ -1430,12 +1539,14 @@
 
       for (let i = 1; i < chain.length; i += 1) {
         solveBounds(chain[i], 0.38);
+        solveCornerDeflectors(chain[i], 0.44);
       }
       for (let i = 0; i < targets.length; i += 1) {
         if (targets[i].broken) {
           continue;
         }
         solveBounds(targets[i], 0.35);
+        solveCornerDeflectors(targets[i], 0.4);
       }
     }
 
@@ -1463,6 +1574,90 @@
     cameraShake *= 0.87;
   }
 
+  function drawHypnoticField(time, theme, w, h) {
+    const driftX = w * (0.5 + Math.sin(time * 0.09) * 0.2);
+    const driftY = h * (0.5 + Math.cos(time * 0.07) * 0.17);
+    const mirrorX = w - driftX;
+    const mirrorY = h - driftY;
+    const maxRadius = Math.max(w, h) * 0.68;
+
+    const auraA = ctx.createRadialGradient(
+      driftX,
+      driftY,
+      20,
+      driftX,
+      driftY,
+      maxRadius
+    );
+    auraA.addColorStop(0, `rgba(${theme.pointerGlow}, 0.15)`);
+    auraA.addColorStop(0.55, `rgba(${theme.pointerGlow}, 0.055)`);
+    auraA.addColorStop(1, "rgba(8, 14, 22, 0)");
+    ctx.fillStyle = auraA;
+    ctx.fillRect(0, 0, w, h);
+
+    const auraB = ctx.createRadialGradient(
+      mirrorX,
+      mirrorY,
+      26,
+      mirrorX,
+      mirrorY,
+      maxRadius * 0.92
+    );
+    auraB.addColorStop(0, `rgba(${theme.pointerHalo}, 0.12)`);
+    auraB.addColorStop(0.52, `rgba(${theme.pointerHalo}, 0.045)`);
+    auraB.addColorStop(1, "rgba(8, 14, 22, 0)");
+    ctx.fillStyle = auraB;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.save();
+    ctx.translate(w * 0.5, h * 0.5);
+    ctx.rotate(Math.sin(time * 0.11) * 0.085);
+    const ringCount = 11;
+    for (let i = 0; i < ringCount; i += 1) {
+      const phase = time * (0.32 + i * 0.018) + i * 0.82;
+      const radius = 96 + i * 52 + Math.sin(phase) * 6;
+      const radiusX = radius * (1.18 + Math.sin(time * 0.2 + i * 0.56) * 0.045);
+      const radiusY = radius * (0.84 + Math.cos(time * 0.19 + i * 0.51) * 0.035);
+      const alpha = 0.012 + (Math.sin(phase + 0.6) * 0.5 + 0.5) * 0.014;
+      ctx.strokeStyle = `rgba(${theme.grid}, ${alpha})`;
+      ctx.lineWidth = i % 3 === 0 ? 1.15 : 0.9;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, radiusX, radiusY, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawInterferenceFlow(time, theme, w, h) {
+    ctx.save();
+    ctx.lineWidth = 1;
+    const rows = 6;
+    const step = 36;
+
+    for (let i = 0; i < rows; i += 1) {
+      const baseY = h * ((i + 0.55) / rows);
+      const amp = h * (0.009 + i * 0.0016);
+      const speed = 0.42 + i * 0.07;
+      const offset = i * 0.88;
+      const alpha = 0.013 + i * 0.002;
+      ctx.strokeStyle = `rgba(${theme.grid}, ${alpha})`;
+      ctx.beginPath();
+      for (let x = -step; x <= w + step; x += step) {
+        const wave =
+          Math.sin(x * 0.0082 + time * speed + offset) * amp +
+          Math.cos(x * 0.0051 - time * (speed * 0.72) + offset * 1.6) * amp * 0.52;
+        const y = baseY + wave;
+        if (x === -step) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawBackground(time) {
     const w = world.width;
     const h = world.height;
@@ -1475,34 +1670,85 @@
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, w, h);
 
-    const pulse = 0.12 + 0.1 * Math.sin(time * 1.45);
+    drawHypnoticField(time, theme, w, h);
+    drawInterferenceFlow(time, theme, w, h);
+
+    const pulse = 0.09 + 0.07 * Math.sin(time * 1.2);
     const pointerGlow = ctx.createRadialGradient(
       pointer.x,
       pointer.y,
-      30,
+      24,
       pointer.x,
       pointer.y,
-      260
+      240
     );
-    pointerGlow.addColorStop(0, `rgba(${theme.pointerGlow}, ${0.3 + pulse})`);
-    pointerGlow.addColorStop(0.5, `rgba(${theme.pointerHalo}, ${0.12 + pulse * 0.3})`);
+    pointerGlow.addColorStop(0, `rgba(${theme.pointerGlow}, ${0.24 + pulse})`);
+    pointerGlow.addColorStop(0.5, `rgba(${theme.pointerHalo}, ${0.09 + pulse * 0.3})`);
     pointerGlow.addColorStop(1, "rgba(8, 14, 21, 0)");
     ctx.fillStyle = pointerGlow;
     ctx.fillRect(0, 0, w, h);
 
-    ctx.strokeStyle = `rgba(${theme.grid}, 0.075)`;
+    ctx.strokeStyle = `rgba(${theme.grid}, 0.048)`;
     ctx.lineWidth = 1;
-    const step = 56;
+    const step = 62;
     ctx.beginPath();
-    for (let x = (time * 14) % step; x < w; x += step) {
+    for (let x = (time * 11) % step; x < w; x += step) {
       ctx.moveTo(x, 0);
       ctx.lineTo(x, h);
     }
-    for (let y = ((time * 10) % step) * 0.6; y < h; y += step) {
+    for (let y = ((time * 8) % step) * 0.55; y < h; y += step) {
       ctx.moveTo(0, y);
       ctx.lineTo(w, y);
     }
     ctx.stroke();
+
+    const vignette = ctx.createRadialGradient(
+      w * 0.5,
+      h * 0.5,
+      Math.min(w, h) * 0.22,
+      w * 0.5,
+      h * 0.5,
+      Math.max(w, h) * 0.72
+    );
+    vignette.addColorStop(0, "rgba(6, 11, 18, 0)");
+    vignette.addColorStop(0.74, "rgba(6, 11, 18, 0.08)");
+    vignette.addColorStop(1, "rgba(3, 6, 10, 0.24)");
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  function drawCornerDeflectors(time) {
+    if (cornerDeflectors.length === 0) {
+      return;
+    }
+    const theme = activeTheme;
+    const pulse = 0.2 + 0.08 * Math.sin(time * 2.1);
+
+    for (let i = 0; i < cornerDeflectors.length; i += 1) {
+      const deflector = cornerDeflectors[i];
+      const glow = ctx.createRadialGradient(
+        deflector.x,
+        deflector.y,
+        deflector.radius * 0.3,
+        deflector.x,
+        deflector.y,
+        deflector.radius * 1.04
+      );
+      glow.addColorStop(0, `rgba(${theme.pointerHalo}, ${0.16 + pulse})`);
+      glow.addColorStop(0.62, `rgba(${theme.pointerGlow}, ${0.14 + pulse * 0.3})`);
+      glow.addColorStop(1, "rgba(12, 20, 31, 0)");
+
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(deflector.x, deflector.y, deflector.radius * 1.04, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = `rgba(${theme.pointerGlow}, ${0.26 + pulse * 0.35})`;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(deflector.x, deflector.y, deflector.radius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   }
 
   function drawAssistGuide(time) {
@@ -1839,6 +2085,7 @@
     ctx.save();
     ctx.translate(shakeX, shakeY);
     drawBackground(time);
+    drawCornerDeflectors(time);
     drawAssistGuide(time);
 
     for (let i = 0; i < targets.length; i += 1) {
@@ -1861,7 +2108,9 @@
     }
     if (assistStateEl) {
       const active = pointer.boost > 0.08;
-      assistStateEl.textContent = active ? "Active" : "Idle";
+      assistStateEl.textContent = active
+        ? pointer.spinDir > 0 ? "Active CW" : "Active CCW"
+        : "Idle";
       assistStateEl.dataset.active = active ? "1" : "0";
     }
   }
@@ -1909,9 +2158,27 @@
     if (prevSpeed > 260 && speed > 300) {
       const dot = (prevVx * vx + prevVy * vy) / (prevSpeed * speed);
       const cross = prevVx * vy - prevVy * vx;
-      if (Math.abs(cross) > 2600) {
-        pointer.spinDir = cross >= 0 ? 1 : -1;
+      const crossSign = cross >= 0 ? 1 : -1;
+
+      if (pointer.down) {
+        if (!pointer.spinLocked && Math.abs(cross) > 2600) {
+          pointer.spinDir = crossSign;
+          pointer.spinLocked = true;
+        } else if (
+          pointer.spinLocked &&
+          crossSign !== pointer.spinDir &&
+          Math.abs(cross) > 42000 &&
+          speed > 950 &&
+          prevSpeed > 700
+        ) {
+          // Allow intentional reversal only on a very strong opposite swipe.
+          pointer.spinDir = crossSign;
+          pointer.spinRate *= 0.4;
+        }
+      } else if (Math.abs(cross) > 2600) {
+        pointer.spinDir = crossSign;
       }
+
       if (dot < 0.42) {
         const severity = clamp((0.42 - dot) * 0.75, 0, 0.5);
         const toTargetX = nextX - handle.x;
@@ -1992,10 +2259,6 @@
         return;
       }
       updatePointerFromEvent(event);
-      if (pointer.down && event.buttons === 0) {
-        pointer.down = false;
-        pointer.downId = null;
-      }
     },
     { passive: true }
   );
@@ -2010,9 +2273,15 @@
     pointer.pivotY = pointer.y;
     const hx = handle.x - pointer.pivotX;
     const hy = handle.y - pointer.pivotY;
+    const crossHint = hx * pointer.vy - hy * pointer.vx;
+    if (Math.abs(crossHint) > 480) {
+      pointer.spinDir = crossHint >= 0 ? 1 : -1;
+    }
+    pointer.spinLocked = true;
     pointer.orbitAngle = Math.atan2(hy, hx);
     pointer.orbitRadius = clamp(Math.hypot(hx, hy), 72, 150);
     pointer.boost = Math.max(pointer.boost, 0.35);
+    pointer.spinRate = Math.max(pointer.spinRate, 6.2);
     try {
       canvas.setPointerCapture(event.pointerId);
     } catch (_) {
@@ -2031,6 +2300,7 @@
     }
     pointer.down = false;
     pointer.downId = null;
+    pointer.spinLocked = false;
   });
   window.addEventListener("pointercancel", (event) => {
     if (pointer.downId !== null && event.pointerId !== pointer.downId) {
@@ -2043,6 +2313,7 @@
     }
     pointer.down = false;
     pointer.downId = null;
+    pointer.spinLocked = false;
   });
 
   window.addEventListener("keydown", (event) => {
@@ -2112,8 +2383,28 @@
     });
   }
 
+  if (hudEl) {
+    const revealHud = () => {
+      if (hudDockTimer !== null) {
+        window.clearTimeout(hudDockTimer);
+        hudDockTimer = null;
+      }
+      setHudDocked(false);
+    };
+    const queueHudDock = () => {
+      scheduleHudDock(800);
+    };
+
+    hudEl.addEventListener("pointerenter", revealHud);
+    hudEl.addEventListener("pointerleave", queueHudDock);
+    hudEl.addEventListener("focusin", revealHud);
+    hudEl.addEventListener("focusout", queueHudDock);
+  }
+
   applyTheme("impact");
+  ensureAudio();
   updateAudioHud();
+  scheduleHudDock(2500);
   initializeChain();
   resetArena();
   resize();

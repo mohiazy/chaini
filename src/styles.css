@@ -145,6 +145,27 @@ body::after {
     0 0 0.01rem rgba(255, 255, 255, 0.15);
   animation: panel-in 520ms ease-out;
   isolation: isolate;
+  transform: translateX(0);
+  opacity: 1;
+  will-change: transform, opacity;
+  transition:
+    transform 360ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 260ms ease,
+    box-shadow 280ms ease;
+}
+
+.hud.docked {
+  transform: translateX(calc(-100% + 2.3rem));
+  opacity: 0.5;
+  box-shadow:
+    0 0.35rem 1rem rgba(0, 0, 0, 0.32),
+    0 0 0.01rem rgba(255, 255, 255, 0.13);
+}
+
+.hud.docked:hover,
+.hud.docked:focus-within {
+  transform: translateX(0);
+  opacity: 1;
 }
 
 .hud::before {
@@ -419,6 +440,14 @@ kbd {
 
   .stats {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .hud,
+  .hud.docked {
+    transform: translateX(0);
+    opacity: 1;
   }
 }
 
