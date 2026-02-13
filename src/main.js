@@ -18,6 +18,16 @@
   const assistStateEl = document.getElementById("assistState");
   const tuningReadoutEl = document.getElementById("tuningReadout");
   const hudEl = document.querySelector(".hud");
+  const AUTO_SPAWN_INTERVAL_MS = 15000;
+  const AUTO_SPAWN_TARGET_COUNT = 4;
+  const isAppleTouchDevice = (() => {
+    const ua = navigator.userAgent || "";
+    const platform = navigator.platform || "";
+    const touchPoints = navigator.maxTouchPoints || 0;
+    const isiOS = /iPad|iPhone|iPod/.test(ua);
+    const isiPadDesktopUA = platform === "MacIntel" && touchPoints > 1;
+    return isiOS || isiPadDesktopUA;
+  })();
 
   const FIXED_DT = 1 / 120;
   const SOLVER_ITERATIONS = 10;
@@ -211,6 +221,7 @@
   let nextShatterSoundTime = 0;
   let nextExplosionSoundTime = 0;
   let hudDockTimer = null;
+  let autoSpawnTimer = null;
 
   function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
@@ -240,6 +251,25 @@
       setHudDocked(true);
       hudDockTimer = null;
     }, delayMs);
+  }
+
+  function startAutoSpawn() {
+    if (!isAppleTouchDevice || autoSpawnTimer !== null) {
+      return;
+    }
+    autoSpawnTimer = window.setInterval(() => {
+      spawnTargets(AUTO_SPAWN_TARGET_COUNT);
+    }, AUTO_SPAWN_INTERVAL_MS);
+  }
+
+  function enableAppleTouchMode() {
+    if (!isAppleTouchDevice) {
+      return;
+    }
+    if (hudEl) {
+      hudEl.hidden = true;
+    }
+    startAutoSpawn();
   }
 
   function rebuildCornerDeflectors() {
@@ -2320,7 +2350,7 @@
     ensureAudio();
     if (event.code === "Space") {
       event.preventDefault();
-      spawnTargets(4);
+      spawnTargets(AUTO_SPAWN_TARGET_COUNT);
       return;
     }
     if (event.code === "KeyR") {
@@ -2383,7 +2413,7 @@
     });
   }
 
-  if (hudEl) {
+  if (hudEl && !isAppleTouchDevice) {
     const revealHud = () => {
       if (hudDockTimer !== null) {
         window.clearTimeout(hudDockTimer);
@@ -2404,7 +2434,11 @@
   applyTheme("impact");
   ensureAudio();
   updateAudioHud();
-  scheduleHudDock(2500);
+  if (isAppleTouchDevice) {
+    enableAppleTouchMode();
+  } else {
+    scheduleHudDock(2500);
+  }
   initializeChain();
   resetArena();
   resize();
